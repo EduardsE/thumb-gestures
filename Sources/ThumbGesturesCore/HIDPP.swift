@@ -37,10 +37,35 @@ public enum HIDPP {
                 params: [UInt8(cid >> 8), UInt8(cid & 0xFF), flags, 0, 0])
     }
 
+    /// The receiver itself, for HID++ 1.0 register requests.
+    public static let receiverIndex: UInt8 = 0xFF
+    /// Receiver register with the notification flags.
+    public static let notificationsRegister: UInt8 = 0x00
+
+    /// HID++ 1.0 register read (short report).
+    public static func readRegister(device: UInt8, address: UInt8) -> [UInt8] {
+        [shortReportID, device, 0x81, address, 0, 0, 0]
+    }
+
+    /// HID++ 1.0 register write (short report, 3 param bytes).
+    public static func writeRegister(device: UInt8, address: UInt8, params: [UInt8]) -> [UInt8] {
+        let padded = Array((params + [0, 0, 0]).prefix(3))
+        return [shortReportID, device, 0x80, address] + padded
+    }
+
+    /// The notifications register value with the "wireless notifications" flag (0x000100) set.
+    /// Without it, the receiver does not report when the mouse connects.
+    public static func withWirelessNotifications(_ params: [UInt8]) -> [UInt8] {
+        var flags = Array((params + [0, 0, 0]).prefix(3))
+        flags[1] |= 0x01
+        return flags
+    }
+
     /// True if the report is the response or the error for this request.
     public static func isReply(_ report: Report, to request: [UInt8]) -> Bool {
         switch report {
-        case let .response(device, feature, fnsw, _), let .error(device, feature, fnsw, _):
+        case let .response(device, feature, fnsw, _), let .error(device, feature, fnsw, _),
+             let .register(device, feature, fnsw, _):
             return device == request[1] && feature == request[2] && fnsw == request[3]
         default:
             return false
@@ -57,6 +82,8 @@ public enum Report: Equatable {
     case rawXY(device: UInt8, feature: UInt8, dx: Int, dy: Int)
     /// A device on the receiver connected (linked) or disconnected.
     case connection(device: UInt8, linked: Bool)
+    /// The reply to a HID++ 1.0 register read (0x81) or write (0x80).
+    case register(device: UInt8, subID: UInt8, address: UInt8, params: [UInt8])
     case other
 
     public init(_ r: [UInt8]) {
@@ -71,6 +98,10 @@ public enum Report: Equatable {
         // Receiver device connection notification. Bit 6 of byte 4 = link not established.
         if r[0] == HIDPP.shortReportID && r[2] == 0x41 {
             self = .connection(device: device, linked: r[4] & 0x40 == 0)
+            return
+        }
+        if r[0] == HIDPP.shortReportID && (r[2] == 0x80 || r[2] == 0x81) {
+            self = .register(device: device, subID: r[2], address: r[3], params: Array(r[4..<7]))
             return
         }
         guard r[0] == HIDPP.longReportID, r.count >= HIDPP.longLength else { self = .other; return }

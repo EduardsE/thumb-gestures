@@ -41,6 +41,11 @@ final class Receiver {
     /// Sends a request and waits for its reply. Returns the reply params, or nil on an error or a timeout.
     func send(_ request: [UInt8], timeout: TimeInterval = 1.5) -> [UInt8]? {
         guard let device else { return nil }
+        // Only one request at a time. A second one would take the first one's reply.
+        guard pending == nil else {
+            log("Request skipped: another request waits for its reply.")
+            return nil
+        }
         pending = request
         reply = nil
         defer { pending = nil }
@@ -54,8 +59,12 @@ final class Receiver {
         while reply == nil, Date() < end {
             CFRunLoopRunInMode(.defaultMode, 0.02, true)
         }
-        if case let .response(_, _, _, params)? = reply { return params }
-        return nil
+        switch reply {
+        case let .response(_, _, _, params)?, let .register(_, _, _, params)?:
+            return params
+        default:
+            return nil
+        }
     }
 
     private func attach(_ newDevice: IOHIDDevice) {

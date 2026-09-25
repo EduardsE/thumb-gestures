@@ -43,12 +43,29 @@ var gesture = Gesture(distance: Settings.switchDistance(UserDefaults.standard.ob
 let receiver = Receiver()
 var deviceIndex: UInt8 = 0
 var reprogIndex: UInt8 = 0
-var divertPending = false
+var coordinator = DivertCoordinator()
+var divertTimer: DispatchWorkItem?
+
+/// Turns on the receiver's connect notifications, so that a reconnect triggers a new divert.
+func enableConnectNotifications() {
+    let read = HIDPP.readRegister(device: HIDPP.receiverIndex, address: HIDPP.notificationsRegister)
+    guard let flags = receiver.send(read) else {
+        log("Cannot read the receiver notification flags.")
+        return
+    }
+    let wanted = HIDPP.withWirelessNotifications(flags)
+    guard wanted != Array(flags.prefix(3)) else { return }
+    let write = HIDPP.writeRegister(device: HIDPP.receiverIndex, address: HIDPP.notificationsRegister, params: wanted)
+    if receiver.send(write) == nil {
+        log("Cannot turn on the receiver connect notifications.")
+    }
+}
 
 /// Finds the mouse on the receiver and diverts the thumb button with raw movement.
-func divert() {
+/// Returns false if no mouse accepted the divert. The old indices stay until a divert succeeds.
+func divertOnce() -> Bool {
     gesture.reset()
-    deviceIndex = 0
+    enableConnectNotifications()
     for index: UInt8 in 1...6 {
         guard let params = receiver.send(HIDPP.getFeature(device: index, id: HIDPP.reprogControlsV4)),
               params[0] != 0 else { continue }
@@ -59,28 +76,44 @@ func divert() {
             deviceIndex = index
             reprogIndex = params[0]
             log("Thumb button ready (device \(index), feature index \(params[0])).")
-            return
+            return true
         }
     }
-    log("No mouse answered. Waiting for it to connect.")
+    return false
 }
 
-/// Gives the thumb button back to the mouse.
-func undivert() {
-    guard deviceIndex != 0 else { return }
-    _ = receiver.send(HIDPP.setCidReporting(device: deviceIndex, reprogIndex: reprogIndex,
-                                            cid: HIDPP.thumbButton, flags: HIDPP.undivert))
-    log("Thumb button given back to the mouse.")
-}
-
-/// Diverts after a delay. Many triggers close together cause one divert.
-func scheduleDivert(after delay: TimeInterval) {
-    guard !divertPending else { return }
-    divertPending = true
-    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-        divertPending = false
-        divert()
+/// Runs a divert now, unless one is running already. Then does what the coordinator says.
+func divert() {
+    guard coordinator.begin() else { return }
+    switch coordinator.end(success: divertOnce()) {
+    case .idle:
+        break
+    case .runAgain:
+        scheduleDivert(after: 0.5)
+    case .retry(let delay):
+        if coordinator.failures == 1 { log("No mouse answered. Trying again in the background.") }
+        scheduleDivert(after: delay)
+    case .quit:
+        undivertAndExit()
     }
+}
+
+/// Diverts after a delay. A new request replaces a waiting one.
+func scheduleDivert(after delay: TimeInterval) {
+    divertTimer?.cancel()
+    let work = DispatchWorkItem { divert() }
+    divertTimer = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+}
+
+/// Gives the thumb button back to the mouse and exits.
+func undivertAndExit() -> Never {
+    if deviceIndex != 0 {
+        _ = receiver.send(HIDPP.setCidReporting(device: deviceIndex, reprogIndex: reprogIndex,
+                                                cid: HIDPP.thumbButton, flags: HIDPP.undivert))
+        log("Thumb button given back to the mouse.")
+    }
+    exit(0)
 }
 
 receiver.onReport = { bytes in
@@ -113,13 +146,14 @@ NSWorkspace.shared.notificationCenter.addObserver(
 }
 
 // launchd sends SIGTERM at logout and at `launchctl bootout`. Ctrl-C sends SIGINT.
+// During a divert, the handler can run inside its wait for a reply. Then the
+// divert gives the button back and exits when it ends.
 var signalSources: [DispatchSourceSignal] = []
 for number in [SIGTERM, SIGINT] {
     signal(number, SIG_IGN)
     let source = DispatchSource.makeSignalSource(signal: number, queue: .main)
     source.setEventHandler {
-        undivert()
-        exit(0)
+        if coordinator.requestQuit() { undivertAndExit() }
     }
     source.resume()
     signalSources.append(source)
