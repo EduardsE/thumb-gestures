@@ -12,12 +12,18 @@ import ThumbGesturesCore
 
 setvbuf(stdout, nil, _IOLBF, 0)
 
-// Two copies would both act on each click.
+// Two copies would both act on each click. If another copy holds the lock
+// (for example one that macOS starts for a moment), wait for it to stop.
+// An exit with code 0 here would stop launchd from starting the app again.
 let lockPath = NSTemporaryDirectory() + "thumbgestures.lock"
 let lockFD = open(lockPath, O_CREAT | O_RDWR, 0o644)
-if lockFD < 0 || flock(lockFD, LOCK_EX | LOCK_NB) != 0 {
-    log("Thumb Gestures is already running. This copy will exit.")
-    exit(0)
+if lockFD < 0 {
+    log("Cannot open the lock file \(lockPath).")
+    exit(1)
+}
+if flock(lockFD, LOCK_EX | LOCK_NB) != 0 {
+    log("Another copy of Thumb Gestures is running. Waiting for it to stop.")
+    flock(lockFD, LOCK_EX)
 }
 
 // Accessibility is necessary to post the ⌃← and ⌃→ key events. A running
