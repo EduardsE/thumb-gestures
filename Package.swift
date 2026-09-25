@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v13)],
     targets: [
         .target(name: "ThumbGesturesCore"),
+        .executableTarget(name: "ThumbGestures", dependencies: ["ThumbGesturesCore"]),
         .testTarget(name: "ThumbGesturesCoreTests", dependencies: ["ThumbGesturesCore"]),
     ]
 )
