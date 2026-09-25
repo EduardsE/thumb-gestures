@@ -13,6 +13,12 @@ public struct SwipeFrame: Equatable {
     public let offset: Double
     public let phase: SwipePhase
     public let exitSpeed: Double
+
+    public init(offset: Double, phase: SwipePhase, exitSpeed: Double) {
+        self.offset = offset
+        self.phase = phase
+        self.exitSpeed = exitSpeed
+    }
 }
 
 public enum DockSwipe {
