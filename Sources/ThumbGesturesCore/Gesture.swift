@@ -52,13 +52,3 @@ public struct Gesture {
         switched = false
     }
 }
-
-public enum Settings {
-    public static let defaultSwitchDistance = 600
-
-    /// The SwitchDistance user default, or the default if it is missing or not a positive number.
-    public static func switchDistance(_ value: Any?) -> Int {
-        if let number = value as? Int, number > 0 { return number }
-        return defaultSwitchDistance
-    }
-}

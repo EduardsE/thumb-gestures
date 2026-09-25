@@ -91,15 +91,4 @@ final class GestureTests: XCTestCase {
     func testDistanceIsAtLeastOne() {
         XCTAssertEqual(Gesture(distance: 0).distance, 1)
     }
-
-    func testSwitchDistanceReadsPositiveNumber() {
-        XCTAssertEqual(Settings.switchDistance(NSNumber(value: 800)), 800)
-    }
-
-    func testSwitchDistanceFallsBackToDefault() {
-        XCTAssertEqual(Settings.switchDistance(nil), 600)
-        XCTAssertEqual(Settings.switchDistance(NSNumber(value: 0)), 600)
-        XCTAssertEqual(Settings.switchDistance(NSNumber(value: -5)), 600)
-        XCTAssertEqual(Settings.switchDistance("800"), 600)
-    }
 }

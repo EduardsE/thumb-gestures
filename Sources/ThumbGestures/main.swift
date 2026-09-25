@@ -39,7 +39,7 @@ if !AXIsProcessTrustedWithOptions([promptKey: prompt] as CFDictionary) {
     exit(1)
 }
 
-var gesture = Gesture(distance: Settings.switchDistance(UserDefaults.standard.object(forKey: "SwitchDistance")))
+var gesture = Gesture(distance: Preferences(defaults: UserDefaults.standard.dictionaryRepresentation()).switchDistance)
 let receiver = Receiver()
 var deviceIndex: UInt8 = 0
 var reprogIndex: UInt8 = 0
