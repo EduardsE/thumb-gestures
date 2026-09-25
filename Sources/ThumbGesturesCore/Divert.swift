@@ -11,6 +11,8 @@ public struct DivertCoordinator {
         case idle
         case runAgain
         case retry(after: Double)
+        /// The divert ended during a pause and succeeded: give the button back.
+        case undivert
         case quit
     }
 
@@ -19,6 +21,8 @@ public struct DivertCoordinator {
     public private(set) var isRunning = false
     /// Failed diverts in a row.
     public private(set) var failures = 0
+    /// During a pause, no divert starts and triggers are not remembered.
+    public private(set) var isPaused = false
     private var again = false
     private var quit = false
 
@@ -26,6 +30,7 @@ public struct DivertCoordinator {
 
     /// Returns true if the caller must start a divert now.
     public mutating func begin() -> Bool {
+        if isPaused { return false }
         guard !isRunning, !quit else {
             again = true
             return false
@@ -40,6 +45,10 @@ public struct DivertCoordinator {
         isRunning = false
         failures = success ? 0 : failures + 1
         if quit { return .quit }
+        if isPaused {
+            again = false
+            return success ? .undivert : .idle
+        }
         if again { return .runAgain }
         if success { return .idle }
         return .retry(after: Self.retryDelays[min(failures, Self.retryDelays.count) - 1])
@@ -50,5 +59,10 @@ public struct DivertCoordinator {
     public mutating func requestQuit() -> Bool {
         quit = true
         return !isRunning
+    }
+
+    public mutating func setPaused(_ paused: Bool) {
+        isPaused = paused
+        if paused { again = false }
     }
 }

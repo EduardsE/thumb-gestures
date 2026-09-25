@@ -65,4 +65,44 @@ final class DivertCoordinatorTests: XCTestCase {
         XCTAssertFalse(coordinator.begin())
         XCTAssertEqual(coordinator.end(success: true), .quit)
     }
+
+    func testBeginWhilePausedReturnsFalse() {
+        coordinator.setPaused(true)
+        XCTAssertTrue(coordinator.isPaused)
+        XCTAssertFalse(coordinator.begin())
+        XCTAssertFalse(coordinator.isRunning)
+    }
+
+    func testTriggerDuringPauseIsNotRemembered() {
+        _ = coordinator.begin()
+        coordinator.setPaused(true)
+        XCTAssertFalse(coordinator.begin())
+        XCTAssertEqual(coordinator.end(success: false), .idle)
+    }
+
+    func testTriggerBeforePauseIsDropped() {
+        _ = coordinator.begin()
+        XCTAssertFalse(coordinator.begin())
+        coordinator.setPaused(true)
+        XCTAssertEqual(coordinator.end(success: true), .undivert)
+    }
+
+    func testResumeAllowsBegin() {
+        coordinator.setPaused(true)
+        coordinator.setPaused(false)
+        XCTAssertTrue(coordinator.begin())
+    }
+
+    func testPauseDuringSuccessfulDivertUndiverts() {
+        _ = coordinator.begin()
+        coordinator.setPaused(true)
+        XCTAssertEqual(coordinator.end(success: true), .undivert)
+    }
+
+    func testQuitDuringPausedDivertQuits() {
+        _ = coordinator.begin()
+        coordinator.setPaused(true)
+        XCTAssertFalse(coordinator.requestQuit())
+        XCTAssertEqual(coordinator.end(success: true), .quit)
+    }
 }

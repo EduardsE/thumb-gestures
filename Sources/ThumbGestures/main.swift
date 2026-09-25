@@ -93,6 +93,8 @@ func divert() {
     case .retry(let delay):
         if coordinator.failures == 1 { log("No mouse answered. Trying again in the background.") }
         scheduleDivert(after: delay)
+    case .undivert:
+        break  // The app has no pause yet. Task 5 of the settings menu plan replaces this file.
     case .quit:
         undivertAndExit()
     }
