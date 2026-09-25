@@ -24,16 +24,17 @@ The direction is the same as a trackpad swipe with natural scrolling. One hold s
 
 ## How it works
 
-Thumb Gestures talks to the mouse through the Logitech HID++ protocol on the Unifying receiver, the same channel that Logi Options+ uses. It tells the mouse to send the thumb button presses and the movement during a hold to the app ("divert"). The app then sends the macOS shortcuts ⌃← or ⌃→ ("Move left/right a space"), or opens Mission Control.
+Thumb Gestures talks to the mouse through the Logitech HID++ protocol on the Unifying receiver, the same channel that Logi Options+ uses. It tells the mouse to send the thumb button presses and the movement during a hold to the app ("divert"). For a Space switch, the app sends the same swipe events that a trackpad sends. Thus a quick second switch interrupts the animation, as on a trackpad. For a click, it opens Mission Control.
 
-The mouse forgets the divert when it sleeps or reconnects. The app sends it again after a reconnect, a wake from sleep, or a receiver plug-in. When the app stops, it gives the button back to the mouse.
+The swipe events are undocumented macOS events (Mac Mouse Fix uses the same ones). A macOS update can change them.
+
+The mouse forgets the divert when it sleeps or reconnects. The app turns on the receiver's connect notifications and sends the divert again after a reconnect, a wake from sleep, or a receiver plug-in. If a divert fails, the app tries again after 2, 5, 15, and then every 30 seconds. When the app stops, it gives the button back to the mouse.
 
 ## Requirements
 
 - macOS 13 or later
 - Xcode Command Line Tools (`xcode-select --install`)
 - A Logitech MX Vertical on a Logitech Unifying receiver (USB ID `046d:c52b`). Bluetooth and Bolt receivers are not supported yet.
-- The "Move left a space" and "Move right a space" shortcuts enabled in System Settings > Keyboard > Keyboard Shortcuts > Mission Control (they are enabled by default).
 
 ## Install
 
@@ -83,9 +84,34 @@ launchctl kickstart -k gui/$(id -u)/local.thumbgestures.ThumbGestures
 
 - **Nothing happens.** Check the log at `~/Library/Logs/ThumbGestures.log`. It must show `Thumb button ready`. If it says it is waiting for permission, turn on Thumb Gestures in the Accessibility settings.
 - **Do not run Logi Options+ at the same time.** It also takes control of the button.
-- **The Space does not switch.** Make sure that you have more than one Space (a full-screen app is a Space), and that the Mission Control shortcuts are enabled.
-- **It stopped after a reinstall.** Each build has a new ad-hoc signature, so macOS can drop the permission. Turn it off and on again in the Accessibility settings.
+- **The Space does not switch.** Make sure that you have more than one Space (a full-screen app is a Space).
+- **It stopped after a reinstall.** Each build has a new ad-hoc signature, so macOS can drop the permission. Remove Thumb Gestures from the Accessibility settings and add it again. To prevent this, see [Keep the permission across rebuilds](#keep-the-permission-across-rebuilds).
 - **The button does nothing after a crash.** The mouse still diverts the button. Turn the mouse off and on to give the button back.
+
+## Keep the permission across rebuilds
+
+`build.sh` signs with a code-signing certificate named `Local App Signing` if your login keychain has one. Otherwise it signs ad-hoc. With a certificate, macOS keeps the Accessibility permission when you rebuild. To create one (a self-signed certificate is enough, and it does not need to be trusted):
+
+```bash
+cat > /tmp/cert.cnf <<'CNF'
+[req]
+distinguished_name = dn
+x509_extensions = ext
+prompt = no
+[dn]
+CN = Local App Signing
+[ext]
+basicConstraints = critical, CA:false
+keyUsage = critical, digitalSignature
+extendedKeyUsage = critical, codeSigning
+CNF
+openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/key.pem -out /tmp/cert.pem -days 3650 -config /tmp/cert.cnf
+openssl pkcs12 -export -legacy -inkey /tmp/key.pem -in /tmp/cert.pem -name "Local App Signing" -out /tmp/id.p12 -passout pass:temp
+security import /tmp/id.p12 -k ~/Library/Keychains/login.keychain-db -P temp -T /usr/bin/codesign
+rm /tmp/key.pem /tmp/id.p12 /tmp/cert.pem /tmp/cert.cnf
+```
+
+To use a different certificate, set `SIGN_IDENTITY` when you run `./install.sh`.
 
 ## Notes
 

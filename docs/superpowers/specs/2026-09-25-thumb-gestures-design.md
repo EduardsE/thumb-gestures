@@ -181,3 +181,11 @@ Manual tests with the mouse:
 - All manual tests pass on the MX Vertical with the Unifying receiver.
 - Scroll Split still works at the same time.
 - The public repo `EduardsE/thumb-gestures` has the code, the README, and the license.
+
+## Changes after implementation (2026-09-25)
+
+- **Live swipe instead of shortcuts.** macOS ignores ⌃← / ⌃→ during the Space animation, so a quick second switch was lost. A spike showed that the undocumented "dock swipe" event pair (the events a trackpad sends; field numbers as in Mac Mouse Fix) switches Spaces, and that a second swipe 0.15 s later interrupts the animation. The app now posts one quick swipe (20 steps, 8 ms apart, exit speed 3; offset +1 = the Space on the right) for each switch. The gesture logic (distance, one switch for each hold) did not change. This replaces the "no private gesture events" decision, at the user's request.
+- **Recovery.** A failed divert is retried after 2, 5, 15, and then every 30 s. The last working indices stay until a divert succeeds. The app turns on the receiver's wireless notifications (HID++ 1.0 register 0x00, flag 0x000100), because without them the receiver sends no 0x41 connection notification. `DivertCoordinator` makes sure that diverts never nest, and that a stop signal during a divert waits for it to end and then gives the button back.
+- **Single instance.** A second copy waits for the lock instead of exiting with code 0, because launchd does not restart the app after a clean exit.
+- **Signing.** `build.sh` signs with a local certificate `Local App Signing` if one exists, so the Accessibility permission survives rebuilds.
+- **Next:** try C2, a swipe that follows the hand during a hold, as a separate change.
