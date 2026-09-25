@@ -15,5 +15,12 @@ cp "$BIN" "$APP/Contents/MacOS/ThumbGestures"
 swift tools/make-icon.swift build/AppIcon.iconset
 iconutil -c icns build/AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
 
-codesign --force --sign - "$APP"
+# Sign with a local certificate if one exists, so macOS keeps the Accessibility
+# permission across rebuilds. Without it, sign ad-hoc (the permission can reset).
+IDENTITY="${SIGN_IDENTITY:-Local App Signing}"
+if security find-certificate -c "$IDENTITY" >/dev/null 2>&1; then
+    codesign --force --sign "$IDENTITY" "$APP"
+else
+    codesign --force --sign - "$APP"
+fi
 echo "Built $APP"
