@@ -20,7 +20,10 @@ Thumb Gestures is a tiny background app that gives the button these actions:
 | Hold the thumb button and move the mouse left | Switch to the Space on the right |
 | Hold the thumb button and move the mouse right | Switch to the Space on the left |
 
-The direction is the same as a trackpad swipe with natural scrolling. One hold switches one Space. The pointer stays in place during a hold.
+The direction is the same as a trackpad swipe with natural scrolling. The pointer stays in place during a hold. There are two switch modes, and you select one in the menu bar:
+
+- **Quick Swipe:** after a short movement, one quick swipe switches one Space. One hold switches one Space.
+- **Follow Hand:** the Space moves with your hand during the hold, as on a trackpad. On release, macOS completes the switch or goes back, from how far and how fast you moved.
 
 ## How it works
 
@@ -62,12 +65,31 @@ open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibil
 
 Then remove **Thumb Gestures** from System Settings > Privacy & Security > Accessibility.
 
-## Options
+## Menu
 
-The switch distance is the horizontal movement, in mouse counts, that starts a Space switch. The default is 600 (about 1.5 cm at 1000 DPI). To change it:
+Thumb Gestures has an icon in the menu bar. Its menu has:
+
+- A status line: **Ready**, **Waiting for the mouse**, or **Paused**.
+- **Quick Swipe** and **Follow Hand**: the switch mode.
+- **Distance**: Short, Medium, or Long, for the selected mode. Each mode keeps its own choice.
+- **Pause** / **Resume**: gives the button back to the mouse (it then changes the pointer speed), or takes it again.
+- **Open Log**: opens the log in Console.
+- **Quit Thumb Gestures**: gives the button back and stops the app until the next login.
+
+A change applies at the next press of the thumb button. No restart is necessary.
+
+| Distance | Quick Swipe: movement to switch | Follow Hand: movement for one full Space |
+|---|---|---|
+| Short | 400 counts (about 1 cm) | 1000 counts (about 2.5 cm) |
+| Medium | 600 counts (about 1.5 cm) | 1500 counts (about 4 cm) |
+| Long | 900 counts (about 2.3 cm) | 2200 counts (about 5.5 cm) |
+
+The distances in cm are for 1000 DPI.
+
+Advanced: in Follow Hand mode, `ExitSpeedFactor` changes how much a flick counts on release (default 1):
 
 ```bash
-defaults write local.thumbgestures.ThumbGestures SwitchDistance -int 800
+defaults write local.thumbgestures.ThumbGestures ExitSpeedFactor -float 1.5
 launchctl kickstart -k gui/$(id -u)/local.thumbgestures.ThumbGestures
 ```
 
@@ -83,6 +105,7 @@ launchctl kickstart -k gui/$(id -u)/local.thumbgestures.ThumbGestures
 ## Troubleshooting
 
 - **Nothing happens.** Check the log at `~/Library/Logs/ThumbGestures.log`. It must show `Thumb button ready`. If it says it is waiting for permission, turn on Thumb Gestures in the Accessibility settings.
+- **The button does nothing while a menu is open.** macOS pauses the mouse events during a menu. Close the menu.
 - **Do not run Logi Options+ at the same time.** It also takes control of the button.
 - **The Space does not switch.** Make sure that you have more than one Space (a full-screen app is a Space).
 - **It stopped after a reinstall.** Each build has a new ad-hoc signature, so macOS can drop the permission. Remove Thumb Gestures from the Accessibility settings and add it again. To prevent this, see [Keep the permission across rebuilds](#keep-the-permission-across-rebuilds).
