@@ -74,7 +74,7 @@ func enableConnectNotifications() {
 /// Finds the mouse on the receiver and diverts the thumb button with raw movement.
 /// Returns false if no mouse accepted the divert. The old indices stay until a divert succeeds.
 func divertOnce() -> Bool {
-    controller.reset()
+    perform(controller.cancel())
     enableConnectNotifications()
     for index: UInt8 in 1...6 {
         guard let params = receiver.send(HIDPP.getFeature(device: index, id: HIDPP.reprogControlsV4)),
@@ -131,8 +131,28 @@ func undivert() {
 }
 
 func undivertAndExit() -> Never {
+    perform(controller.cancel())
     undivert()
     exit(0)
+}
+
+/// Does the controller's outputs.
+func perform(_ outputs: [ThumbOutput]) {
+    for output in outputs {
+        switch output {
+        case .missionControl:
+            log("Action: missionControl")
+            Actions.perform(.missionControl)
+        case .quickSwipe(let action):
+            log("Action: \(action)")
+            Actions.perform(action)
+        case .frame(let frame):
+            if frame.phase != .changed || verbose {
+                log("Swipe \(frame.phase) offset \(String(format: "%.2f", frame.offset)) exit \(String(format: "%.2f", frame.exitSpeed))")
+            }
+            Actions.post(frame)
+        }
+    }
 }
 
 /// Stores new settings, gives them to the controller, and updates the menu.
@@ -153,21 +173,7 @@ receiver.onReport = { bytes in
         log(linked ? "Mouse connected." : "Mouse disconnected.")
         if linked { scheduleDivert(after: 0.5) }
     }
-    for output in controller.handle(event, now: ProcessInfo.processInfo.systemUptime) {
-        switch output {
-        case .missionControl:
-            log("Action: missionControl")
-            Actions.perform(.missionControl)
-        case .quickSwipe(let action):
-            log("Action: \(action)")
-            Actions.perform(action)
-        case .frame(let frame):
-            if frame.phase != .changed || verbose {
-                log("Swipe \(frame.phase) offset \(String(format: "%.2f", frame.offset)) exit \(String(format: "%.2f", frame.exitSpeed))")
-            }
-            Actions.post(frame)
-        }
-    }
+    perform(controller.handle(event, now: ProcessInfo.processInfo.systemUptime))
 }
 receiver.onAttach = {
     log("Receiver found.")
@@ -176,7 +182,7 @@ receiver.onAttach = {
 receiver.onDetach = {
     log("Receiver removed.")
     deviceIndex = 0
-    controller.reset()
+    perform(controller.cancel())
     if !coordinator.isPaused { menu.status = .waiting }
 }
 

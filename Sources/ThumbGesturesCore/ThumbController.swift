@@ -57,6 +57,17 @@ public struct ThumbController {
         }
     }
 
+    /// Ends an open live swipe, so that macOS does not stay between two Spaces, and then resets.
+    /// Use it before a divert, at a receiver removal, and at exit.
+    public mutating func cancel() -> [ThumbOutput] {
+        let outputs: [ThumbOutput] = follow.handle(.linked(false), now: 0).compactMap { output in
+            if case .frame(let frame) = output { return .frame(frame) }
+            return nil
+        }
+        reset()
+        return outputs
+    }
+
     public mutating func reset() {
         quick.reset()
         follow.reset()
