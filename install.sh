@@ -11,6 +11,11 @@ LOG="$HOME/Library/Logs/ThumbGestures.log"
 ./build.sh
 
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+# bootout returns before the old copy is gone. Wait (max 5 s), or bootstrap fails.
+for _ in $(seq 50); do
+    launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || break
+    sleep 0.1
+done
 rm -rf "$APP"
 cp -R "build/Thumb Gestures.app" "$APP"
 

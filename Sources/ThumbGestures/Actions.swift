@@ -28,7 +28,7 @@ enum Actions {
 
     /// The undocumented event pair that a trackpad sends for a horizontal Space swipe.
     /// The field numbers are the same that Mac Mouse Fix uses. A macOS update can change them.
-    private static func post(_ frame: SwipeFrame) {
+    static func post(_ frame: SwipeFrame) {
         func field(_ number: UInt32) -> CGEventField { CGEventField(rawValue: number)! }
 
         guard let gesture = CGEvent(source: nil), let dock = CGEvent(source: nil) else { return }

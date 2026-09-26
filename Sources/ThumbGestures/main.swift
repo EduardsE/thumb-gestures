@@ -1,6 +1,7 @@
 // Thumb Gestures — actions for the thumb button of a Logitech MX Vertical.
 //
-// Click: Mission Control. Hold and move left or right: switch one Space.
+// Click: Mission Control. Hold and move left or right: switch Spaces, as a
+// quick swipe or with the Space following the hand (a menu bar setting).
 // The app diverts the button through Logitech HID++ on the receiver, so
 // Logi Options+ is not necessary. The mouse forgets the divert when it
 // reconnects, so the app sends it again after a connect, a wake, or a plug-in.
@@ -26,9 +27,9 @@ if flock(lockFD, LOCK_EX | LOCK_NB) != 0 {
     flock(lockFD, LOCK_EX)
 }
 
-// Accessibility is necessary to post the ⌃← and ⌃→ key events. A running
-// process does not see the permission change, so exit and let launchd start
-// a new copy that does. Show the system prompt only on the first try.
+// Accessibility is necessary to post the swipe events. A running process
+// does not see the permission change, so exit and let launchd start a new
+// copy that does. Show the system prompt only on the first try.
 let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
 let promptedKey = "PromptedForAccessibility"
 let prompt = !UserDefaults.standard.bool(forKey: promptedKey)
@@ -39,7 +40,16 @@ if !AXIsProcessTrustedWithOptions([promptKey: prompt] as CFDictionary) {
     exit(1)
 }
 
-var gesture = Gesture(distance: Preferences(defaults: UserDefaults.standard.dictionaryRepresentation()).switchDistance)
+// A menu bar app with no Dock icon.
+let app = NSApplication.shared
+app.setActivationPolicy(.accessory)
+
+var preferences = Preferences(defaults: UserDefaults.standard.dictionaryRepresentation())
+let exitFactor = Preferences.exitSpeedFactor(UserDefaults.standard.object(forKey: Preferences.exitSpeedFactorKey))
+var controller = ThumbController(preferences: preferences, exitFactor: exitFactor)
+let menu = StatusMenu()
+menu.preferences = preferences
+
 let receiver = Receiver()
 var deviceIndex: UInt8 = 0
 var reprogIndex: UInt8 = 0
@@ -64,7 +74,7 @@ func enableConnectNotifications() {
 /// Finds the mouse on the receiver and diverts the thumb button with raw movement.
 /// Returns false if no mouse accepted the divert. The old indices stay until a divert succeeds.
 func divertOnce() -> Bool {
-    gesture.reset()
+    controller.reset()
     enableConnectNotifications()
     for index: UInt8 in 1...6 {
         guard let params = receiver.send(HIDPP.getFeature(device: index, id: HIDPP.reprogControlsV4)),
@@ -76,13 +86,15 @@ func divertOnce() -> Bool {
             deviceIndex = index
             reprogIndex = params[0]
             log("Thumb button ready (device \(index), feature index \(params[0])).")
+            menu.status = .ready
             return true
         }
     }
     return false
 }
 
-/// Runs a divert now, unless one is running already. Then does what the coordinator says.
+/// Runs a divert now, unless one is running already or the app is paused.
+/// Then does what the coordinator says.
 func divert() {
     guard coordinator.begin() else { return }
     switch coordinator.end(success: divertOnce()) {
@@ -91,31 +103,47 @@ func divert() {
     case .runAgain:
         scheduleDivert(after: 0.5)
     case .retry(let delay):
+        menu.status = .waiting
         if coordinator.failures == 1 { log("No mouse answered. Trying again in the background.") }
         scheduleDivert(after: delay)
     case .undivert:
-        break  // The app has no pause yet. Task 5 of the settings menu plan replaces this file.
+        undivert()
     case .quit:
         undivertAndExit()
     }
 }
 
-/// Diverts after a delay. A new request replaces a waiting one.
+/// Diverts after a delay. A new request replaces a waiting one. Nothing happens during a pause.
 func scheduleDivert(after delay: TimeInterval) {
+    guard !coordinator.isPaused else { return }
     divertTimer?.cancel()
     let work = DispatchWorkItem { divert() }
     divertTimer = work
     DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
 }
 
-/// Gives the thumb button back to the mouse and exits.
+/// Gives the thumb button back to the mouse.
+func undivert() {
+    guard deviceIndex != 0 else { return }
+    _ = receiver.send(HIDPP.setCidReporting(device: deviceIndex, reprogIndex: reprogIndex,
+                                            cid: HIDPP.thumbButton, flags: HIDPP.undivert))
+    log("Thumb button given back to the mouse.")
+}
+
 func undivertAndExit() -> Never {
-    if deviceIndex != 0 {
-        _ = receiver.send(HIDPP.setCidReporting(device: deviceIndex, reprogIndex: reprogIndex,
-                                                cid: HIDPP.thumbButton, flags: HIDPP.undivert))
-        log("Thumb button given back to the mouse.")
-    }
+    undivert()
     exit(0)
+}
+
+/// Stores new settings, gives them to the controller, and updates the menu.
+func save(_ newPreferences: Preferences) {
+    preferences = newPreferences
+    for (key, value) in newPreferences.defaultsValues {
+        UserDefaults.standard.set(value, forKey: key)
+    }
+    controller.apply(newPreferences)
+    menu.preferences = newPreferences
+    log("Settings: \(newPreferences.mode.rawValue), quick swipe \(newPreferences.quickPreset.rawValue), follow hand \(newPreferences.followPreset.rawValue).")
 }
 
 receiver.onReport = { bytes in
@@ -125,9 +153,20 @@ receiver.onReport = { bytes in
         log(linked ? "Mouse connected." : "Mouse disconnected.")
         if linked { scheduleDivert(after: 0.5) }
     }
-    if let action = gesture.handle(event) {
-        log("Action: \(action)")
-        Actions.perform(action)
+    for output in controller.handle(event, now: ProcessInfo.processInfo.systemUptime) {
+        switch output {
+        case .missionControl:
+            log("Action: missionControl")
+            Actions.perform(.missionControl)
+        case .quickSwipe(let action):
+            log("Action: \(action)")
+            Actions.perform(action)
+        case .frame(let frame):
+            if frame.phase != .changed || verbose {
+                log("Swipe \(frame.phase) offset \(String(format: "%.2f", frame.offset)) exit \(String(format: "%.2f", frame.exitSpeed))")
+            }
+            Actions.post(frame)
+        }
     }
 }
 receiver.onAttach = {
@@ -137,7 +176,43 @@ receiver.onAttach = {
 receiver.onDetach = {
     log("Receiver removed.")
     deviceIndex = 0
-    gesture.reset()
+    controller.reset()
+    if !coordinator.isPaused { menu.status = .waiting }
+}
+
+menu.onSelectMode = { mode in
+    var newPreferences = preferences
+    newPreferences.mode = mode
+    save(newPreferences)
+}
+menu.onSelectPreset = { preset in
+    var newPreferences = preferences
+    newPreferences.preset = preset
+    save(newPreferences)
+}
+menu.onPause = {
+    if coordinator.isPaused {
+        coordinator.setPaused(false)
+        menu.status = .waiting
+        log("Resumed.")
+        scheduleDivert(after: 0.1)
+    } else {
+        coordinator.setPaused(true)
+        divertTimer?.cancel()
+        menu.status = .paused
+        log("Paused.")
+        // A divert that is running now gives the button back when it ends.
+        if !coordinator.isRunning { undivert() }
+    }
+}
+menu.onOpenLog = {
+    let logFile = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/ThumbGestures.log")
+    let console = URL(fileURLWithPath: "/System/Applications/Utilities/Console.app")
+    NSWorkspace.shared.open([logFile], withApplicationAt: console, configuration: NSWorkspace.OpenConfiguration())
+}
+menu.onQuit = {
+    log("Quit from the menu.")
+    if coordinator.requestQuit() { undivertAndExit() }
 }
 
 NSWorkspace.shared.notificationCenter.addObserver(
@@ -167,5 +242,5 @@ if receiver.start() == Receiver.notPermitted {
     sleep(5)
     exit(1)
 }
-log("Thumb Gestures is running (switch distance \(gesture.distance)). Waiting for the receiver.")
-CFRunLoopRun()
+log("Thumb Gestures is running (\(preferences.mode.rawValue), quick swipe \(preferences.quickPreset.rawValue), follow hand \(preferences.followPreset.rawValue)). Waiting for the receiver.")
+app.run()
