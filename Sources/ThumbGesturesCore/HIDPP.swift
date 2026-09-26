@@ -137,14 +137,15 @@ public enum ThumbEvent: Equatable {
 
 extension Report {
     /// The event for the watched button, or nil if the report is not for it.
-    /// Connection notifications count for any device, so a divert can start before the mouse is found.
+    /// Before the mouse is found (device 0), a connection of any device counts, so a divert can start.
+    /// After that, only the mouse's own connection counts, so another device cannot end a hold.
     public func thumbEvent(device: UInt8, reprogIndex: UInt8, cid: UInt16 = HIDPP.thumbButton) -> ThumbEvent? {
         switch self {
         case let .buttons(d, f, cids) where d == device && f == reprogIndex:
             return .button(pressed: cids.contains(cid))
         case let .rawXY(d, f, dx, _) where d == device && f == reprogIndex:
             return .move(dx: dx)
-        case let .connection(_, linked):
+        case let .connection(d, linked) where device == 0 || d == device:
             return .linked(linked)
         default:
             return nil

@@ -34,6 +34,9 @@ final class Receiver {
         IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
     }
 
+    /// True while a receiver is connected.
+    var isAttached: Bool { device != nil }
+
     func start() -> IOReturn {
         IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
     }

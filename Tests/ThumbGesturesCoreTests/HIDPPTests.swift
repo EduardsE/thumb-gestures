@@ -100,12 +100,22 @@ final class HIDPPTests: XCTestCase {
         XCTAssertNil(Report(long([0x11, 0x02, 0x0A, 0x00, 0x00, 0xFD])).thumbEvent(device: 1, reprogIndex: 10))
     }
 
-    func testThumbEventReportsConnectionForAnyDevice() {
+    func testThumbEventReportsConnectionForAnyDeviceBeforeTheMouseIsFound() {
         // Before the mouse is found, the device index is 0.
         XCTAssertEqual(Report([0x10, 0x01, 0x41, 0x04, 0x02, 0x7A, 0x40]).thumbEvent(device: 0, reprogIndex: 0),
                        .linked(true))
-        XCTAssertEqual(Report([0x10, 0x02, 0x41, 0x04, 0x42, 0x7A, 0x40]).thumbEvent(device: 1, reprogIndex: 10),
+        XCTAssertEqual(Report([0x10, 0x02, 0x41, 0x04, 0x42, 0x7A, 0x40]).thumbEvent(device: 0, reprogIndex: 0),
                        .linked(false))
+    }
+
+    func testThumbEventReportsConnectionOfTheMouse() {
+        XCTAssertEqual(Report([0x10, 0x01, 0x41, 0x04, 0x42, 0x7A, 0x40]).thumbEvent(device: 1, reprogIndex: 10),
+                       .linked(false))
+    }
+
+    func testThumbEventIgnoresConnectionOfAnotherDevice() {
+        // For example a keyboard on the same receiver. It must not end the user's hold.
+        XCTAssertNil(Report([0x10, 0x02, 0x41, 0x04, 0x42, 0x7A, 0x40]).thumbEvent(device: 1, reprogIndex: 10))
     }
 
     func testThumbEventOtherButtonIsRelease() {

@@ -86,7 +86,7 @@ func divertOnce() -> Bool {
             deviceIndex = index
             reprogIndex = params[0]
             log("Thumb button ready (device \(index), feature index \(params[0])).")
-            menu.status = .ready
+            if !coordinator.isPaused { menu.status = .ready }
             return true
         }
     }
@@ -96,6 +96,8 @@ func divertOnce() -> Bool {
 /// Runs a divert now, unless one is running already or the app is paused.
 /// Then does what the coordinator says.
 func divert() {
+    // Without a receiver, a divert cannot work. The receiver's plug-in starts the next one.
+    guard receiver.isAttached else { return }
     guard coordinator.begin() else { return }
     switch coordinator.end(success: divertOnce()) {
     case .idle:

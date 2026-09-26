@@ -63,6 +63,11 @@ public struct DivertCoordinator {
 
     public mutating func setPaused(_ paused: Bool) {
         isPaused = paused
-        if paused { again = false }
+        if paused {
+            again = false
+        } else {
+            // After a pause, start the backoff again from the first delay.
+            failures = 0
+        }
     }
 }

@@ -105,4 +105,14 @@ final class DivertCoordinatorTests: XCTestCase {
         XCTAssertFalse(coordinator.requestQuit())
         XCTAssertEqual(coordinator.end(success: true), .quit)
     }
+
+    func testResumeResetsBackoff() {
+        _ = coordinator.begin(); _ = coordinator.end(success: false)
+        _ = coordinator.begin(); _ = coordinator.end(success: false)
+        coordinator.setPaused(true)
+        coordinator.setPaused(false)
+        XCTAssertEqual(coordinator.failures, 0)
+        _ = coordinator.begin()
+        XCTAssertEqual(coordinator.end(success: false), .retry(after: 2))
+    }
 }
